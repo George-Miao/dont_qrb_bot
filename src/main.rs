@@ -5,6 +5,7 @@ use frankenstein::{
     AsyncTelegramApi,
     input_file::FileUpload,
     methods::{GetStickerSetParams, GetUpdatesParams, SendStickerParams},
+    types::ReplyParameters,
     updates::UpdateContent,
 };
 use rand::{rng, seq::IndexedRandom};
@@ -132,6 +133,12 @@ async fn main() {
                     // Send the sticker
                     let send_params = SendStickerParams::builder()
                         .chat_id(message.chat.id)
+                        .reply_parameters(
+                            ReplyParameters::builder()
+                                .message_id(message.message_id)
+                                .allow_sending_without_reply(true)
+                                .build(),
+                        )
                         .sticker(FileUpload::String(sticker_id.clone()))
                         .build();
 
