@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cyper::Client;
 use frankenstein::{
     AsyncTelegramApi,
@@ -54,9 +56,19 @@ async fn main() {
     let api_token =
         std::env::var("BOT_TOKEN").expect("Failed to load bot token. Set BOT_TOKEN env var");
 
+    let root_store = rustls::RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+    };
+    let client = Client::builder()
+        .use_rustls(Arc::new(
+            rustls::ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth(),
+        ))
+        .build();
     let bot = Bot {
         api_url: format!("https://api.telegram.org/bot{}", api_token),
-        client: Client::new(),
+        client,
     };
 
     // Get the sticker set

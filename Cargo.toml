@@ -10,3 +10,4 @@ frankenstein = { git = "https://github.com/George-Miao/frankenstein", version = 
 rand = "0.10.0"
 rustls = { version = "0.23.37", features = ["ring"], default-features = false }
 serde = "1.0.228"
+webpki-roots = "1.0.6"
