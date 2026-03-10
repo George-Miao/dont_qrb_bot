@@ -1,0 +1,12 @@
+[package]
+name = "dont_qrb_bot"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+compio = { version = "0.18.0", features = ["macros"] }
+cyper = { version = "0.8.2", features = ["json", "multipart", "rustls"], default-features = false }
+frankenstein = { git = "https://github.com/George-Miao/frankenstein", version = "0.48.0", features = ["trait-async"] }
+rand = "0.10.0"
+rustls = { version = "0.23.37", features = ["ring"], default-features = false }
+serde = "1.0.228"
