@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use cyper::Client;
 use frankenstein::{
@@ -52,6 +55,13 @@ impl AsyncTelegramApi for Bot {
     }
 }
 
+fn curr_time() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Bruh what year is it")
+        .as_secs()
+}
+
 #[compio::main]
 async fn main() {
     let api_token =
@@ -91,7 +101,7 @@ async fn main() {
         .into_iter()
         .map(|s| s.file_id)
         .collect::<Vec<_>>();
-    println!(
+    eprintln!(
         "Loaded {} stickers from set '{}'",
         stickers.len(),
         sticker_set_name
@@ -99,6 +109,8 @@ async fn main() {
 
     // Start polling for updates
     let mut offset: Option<i64> = None;
+    let mut rng = rng();
+
     loop {
         let params = GetUpdatesParams::builder().timeout(30u32);
         let params = if let Some(offset) = offset {
@@ -119,34 +131,48 @@ async fn main() {
         for update in updates {
             offset = Some(update.update_id as i64 + 1);
 
-            if let UpdateContent::Message(message) = update.content
-                && let Some(text) = &message.text
-            {
-                let text_lower = text.to_lowercase();
+            let UpdateContent::Message(message) = update.content else {
+                continue;
+            };
 
-                // Check if message contains keywords
-                if text_lower.contains("qrb") || text.contains("去日本") {
-                    // Select a random sticker
-                    let mut rng = rng();
-                    let sticker_id = stickers.choose(&mut rng).unwrap();
+            let Some(mut text) = message.text else {
+                eprintln!("No text in the message, skip");
+                continue;
+            };
 
-                    // Send the sticker
-                    let send_params = SendStickerParams::builder()
-                        .chat_id(message.chat.id)
-                        .reply_parameters(
-                            ReplyParameters::builder()
-                                .message_id(message.message_id)
-                                .allow_sending_without_reply(true)
-                                .build(),
-                        )
-                        .sticker(FileUpload::String(sticker_id.clone()))
-                        .build();
+            if message.date.abs_diff(curr_time()) >= 60 {
+                eprintln!("Recevied stale message, skip");
+                continue;
+            }
 
-                    if let Err(e) = bot.send_sticker(&send_params).await {
-                        eprintln!("Failed to send sticker: {:?}", e);
-                    } else {
-                        println!("Sent sticker to chat {}", message.chat.id);
-                    }
+            text.make_ascii_lowercase();
+
+            // Check if message contains keywords
+            if text.contains("qrb") || text.contains("去日本") {
+                // Select a random sticker
+                let sticker_id = stickers
+                    .choose(&mut rng)
+                    .expect("The sticker set should not be empty");
+
+                // Send the sticker
+                let send_params = SendStickerParams::builder()
+                    .chat_id(message.chat.id)
+                    .reply_parameters(
+                        ReplyParameters::builder()
+                            .message_id(message.message_id)
+                            .allow_sending_without_reply(true)
+                            .build(),
+                    )
+                    .sticker(FileUpload::String(sticker_id.clone()))
+                    .build();
+
+                if let Err(e) = bot.send_sticker(&send_params).await {
+                    eprintln!("Failed to send sticker: {:?}", e);
+                } else {
+                    eprintln!(
+                        "Sent sticker to chat {} in reply to #{}",
+                        message.chat.id, message.message_id
+                    );
                 }
             }
         }
