@@ -1,6 +1,9 @@
+#[cfg(test)]
+mod tests;
+
 use std::{
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use cyper::Client;
@@ -13,9 +16,12 @@ use frankenstein::{
 };
 use rand::{rng, seq::IndexedRandom};
 
+const POLL_TIMEOUT: u32 = 30;
+
 struct Bot {
     api_url: String,
     client: Client,
+    timeout: Duration,
 }
 
 impl AsyncTelegramApi for Bot {
@@ -38,7 +44,10 @@ impl AsyncTelegramApi for Bot {
         if let Some(param) = params {
             req = req.json(&param)?;
         }
-        req.send().await?.json().await
+        // Cover both the response headers and the full body.
+        compio::time::timeout(self.timeout, async { req.send().await?.json().await })
+            .await
+            .map_err(|_| cyper::Error::Timeout)?
     }
 
     async fn request_with_form_data<Params, Output>(
@@ -80,6 +89,8 @@ async fn main() {
     let bot = Bot {
         api_url: format!("https://api.telegram.org/bot{}", api_token),
         client,
+        // Allow extra time after Telegram's long poll ends.
+        timeout: Duration::from_secs(u64::from(POLL_TIMEOUT) + 15),
     };
 
     // Get the sticker set
@@ -112,7 +123,7 @@ async fn main() {
     let mut rng = rng();
 
     loop {
-        let params = GetUpdatesParams::builder().timeout(30u32);
+        let params = GetUpdatesParams::builder().timeout(POLL_TIMEOUT);
         let params = if let Some(offset) = offset {
             params.offset(offset).build()
         } else {
