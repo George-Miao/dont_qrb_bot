@@ -11,6 +11,7 @@ use frankenstein::{
     AsyncTelegramApi,
     input_file::FileUpload,
     methods::{GetStickerSetParams, GetUpdatesParams, SendStickerParams},
+    response::ErrorResponse,
     types::ReplyParameters,
     updates::UpdateContent,
 };
@@ -24,8 +25,51 @@ struct Bot {
     timeout: Duration,
 }
 
+#[derive(Debug)]
+enum Error {
+    Client(cyper::Error),
+    Api(ErrorResponse),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Client(error) => error.fmt(f),
+            Self::Api(error) => {
+                write!(
+                    f,
+                    "Telegram error {}: {}",
+                    error.error_code, error.description
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Client(error) => Some(error),
+            Self::Api(_) => None,
+        }
+    }
+}
+
+impl From<cyper::Error> for Error {
+    fn from(error: cyper::Error) -> Self {
+        Self::Client(error)
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum Response<T> {
+    Error(ErrorResponse),
+    Success(T),
+}
+
 impl AsyncTelegramApi for Bot {
-    type Error = cyper::Error;
+    type Error = Error;
 
     async fn request<Params, Output>(
         &self,
@@ -45,9 +89,14 @@ impl AsyncTelegramApi for Bot {
             req = req.json(&param)?;
         }
         // Cover both the response headers and the full body.
-        compio::time::timeout(self.timeout, async { req.send().await?.json().await })
-            .await
-            .map_err(|_| cyper::Error::Timeout)?
+        compio::time::timeout(self.timeout, async {
+            match req.send().await?.json::<Response<Output>>().await? {
+                Response::Success(output) => Ok(output),
+                Response::Error(error) => Err(Error::Api(error)),
+            }
+        })
+        .await
+        .map_err(|_| cyper::Error::Timeout)?
     }
 
     async fn request_with_form_data<Params, Output>(
